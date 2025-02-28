@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scheduled-transformation
+  namespace: code-analysis
+spec:
+  schedule: "0 1 * * *"  # Run at 1:00 AM every day
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: transformation-job
+            image: python:3.9-slim
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/bash
+            - -c
+            - |
+              pip install requests
+              python /scripts/trigger-transformation.py \
+                --repo-url ${REPO_URL} \
+                --branch ${BRANCH} \
+                --transformation-type ${TRANSFORMATION_TYPE} \
+                --verification-level ${VERIFICATION_LEVEL} \
+                --api-url ${API_URL} \
+                --wait \
+                --timeout ${TIMEOUT}
+            env:
+            - name: REPO_URL
+              value: "https://github.com/your-org/your-repo.git"
+            - name: BRANCH
+              value: "main"
+            - name: TRANSFORMATION_TYPE
+              value: "REFACTOR"
+            - name: VERIFICATION_LEVEL
+              value: "STANDARD"
+            - name: API_URL
+              value: "http://transformation-engine.code-analysis.svc.cluster.local:8081"
+            - name: TIMEOUT
+              value: "1800"  # 30 minutes
+            - name: PREFERRED_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: transformation-engine-config
+                  key: preferred_model
+            - name: FALLBACK_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: transformation-engine-config
+                  key: fallback_model
+            - name: SPECIALIZED_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: transformation-engine-config
+                  key: specialized_model
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-credentials
+                  key: token
+            volumeMounts:
+            - name: scripts-volume
+              mountPath: /scripts
+          volumes:
+          - name: scripts-volume
+            configMap:
+              name: transformation-scripts
+              defaultMode: 0755
+          restartPolicy: OnFailure

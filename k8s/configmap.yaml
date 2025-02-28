@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: transformation-engine-config
+  namespace: code-analysis
+data:
+  ollama_url: "http://ollama-service:11434"
+  preferred_model: "deepseek-coder-v2:16b"
+  fallback_model: "qwen2.5-coder:7b"
+  specialized_model: "codellama:34b"
+  redis_host: "redis-service"
+  code_analyzer_url: "http://code-analyzer-service:8000"
+  knowledge_repo_url: "http://knowledge-repo-service:8000"

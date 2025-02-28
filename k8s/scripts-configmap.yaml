@@ -1,0 +1,82 @@
+apiVersion: v1
+data:
+  trigger-transformation.py: "#!/usr/bin/env python3\n\"\"\"\nScript to trigger code
+    transformations via the Transformation Engine API.\nThis script can be used in
+    CI/CD pipelines to initiate transformations.\n\"\"\"\n\nimport os\nimport sys\nimport
+    json\nimport argparse\nimport time\nfrom pathlib import Path\nimport requests\nfrom
+    typing import Dict, List, Any, Optional\n\ndef parse_args():\n    \"\"\"Parse
+    command line arguments.\"\"\"\n    parser = argparse.ArgumentParser(description='Trigger
+    code transformations')\n    \n    parser.add_argument('--repo-url', required=True,\n
+    \                       help='URL of the repository to transform')\n    \n    parser.add_argument('--branch',
+    default='main',\n                        help='Branch to transform (default: main)')\n
+    \   \n    parser.add_argument('--transformation-type', \n                        choices=['REFACTOR',
+    'OPTIMIZE', 'PRUNE', 'MERGE', 'MODERNIZE', 'FIX_SECURITY'],\n                        default='REFACTOR',\n
+    \                       help='Type of transformation to apply (default: REFACTOR)')\n
+    \   \n    parser.add_argument('--verification-level',\n                        choices=['NONE',
+    'BASIC', 'STANDARD', 'STRICT'],\n                        default='STANDARD',\n
+    \                       help='Level of verification to perform (default: STANDARD)')\n
+    \   \n    parser.add_argument('--safe-mode', action='store_true', default=True,\n
+    \                       help='Only apply verified transformations (default: True)')\n
+    \   \n    parser.add_argument('--api-url', default='http://localhost:8081',\n
+    \                       help='URL of the Transformation Engine API (default: http://localhost:8081)')\n
+    \   \n    parser.add_argument('--files', nargs='+',\n                        help='Specific
+    files to transform (optional)')\n    \n    parser.add_argument('--wait', action='store_true',\n
+    \                       help='Wait for transformation to complete')\n    \n    parser.add_argument('--timeout',
+    type=int, default=600,\n                        help='Timeout in seconds when
+    waiting (default: 600)')\n    \n    return parser.parse_args()\n\ndef trigger_transformation(args)
+    -> Dict[str, Any]:\n    \"\"\"Trigger a transformation job via the API.\"\"\"\n
+    \   url = f\"{args.api_url}/api/v1/transform\"\n    \n    payload = {\n        \"repository_url\":
+    args.repo_url,\n        \"branch\": args.branch,\n        \"transformation_type\":
+    args.transformation_type,\n        \"verification_level\": args.verification_level,\n
+    \       \"safe_mode\": args.safe_mode\n    }\n    \n    if args.files:\n        payload[\"files\"]
+    = args.files\n    \n    try:\n        response = requests.post(url, json=payload)\n
+    \       response.raise_for_status()\n        return response.json()\n    except
+    requests.exceptions.RequestException as e:\n        print(f\"Error triggering
+    transformation: {e}\")\n        sys.exit(1)\n\ndef check_job_status(api_url: str,
+    job_id: str) -> Dict[str, Any]:\n    \"\"\"Check the status of a transformation
+    job.\"\"\"\n    url = f\"{api_url}/api/v1/transform/{job_id}\"\n    \n    try:\n
+    \       response = requests.get(url)\n        response.raise_for_status()\n        return
+    response.json()\n    except requests.exceptions.RequestException as e:\n        print(f\"Error
+    checking job status: {e}\")\n        sys.exit(1)\n\ndef wait_for_completion(api_url:
+    str, job_id: str, timeout: int) -> Dict[str, Any]:\n    \"\"\"Wait for a transformation
+    job to complete.\"\"\"\n    start_time = time.time()\n    poll_interval = 5  #
+    seconds\n    \n    while time.time() - start_time < timeout:\n        status =
+    check_job_status(api_url, job_id)\n        \n        if status.get(\"status\")
+    in [\"completed\", \"failed\"]:\n            return status\n        \n        print(f\"Job
+    status: {status.get('status', 'unknown')} - waiting...\")\n        time.sleep(poll_interval)\n
+    \   \n    print(f\"Timeout waiting for job {job_id} to complete\")\n    return
+    {\"status\": \"timeout\", \"job_id\": job_id}\n\ndef get_job_result(api_url: str,
+    job_id: str) -> Dict[str, Any]:\n    \"\"\"Get the results of a completed transformation
+    job.\"\"\"\n    url = f\"{api_url}/api/v1/transform/{job_id}/result\"\n    \n
+    \   try:\n        response = requests.get(url)\n        response.raise_for_status()\n
+    \       return response.json()\n    except requests.exceptions.RequestException
+    as e:\n        print(f\"Error getting job results: {e}\")\n        sys.exit(1)\n\ndef
+    main():\n    \"\"\"Main entry point.\"\"\"\n    args = parse_args()\n    \n    print(f\"Triggering
+    {args.transformation_type} transformation for {args.repo_url}\")\n    result =
+    trigger_transformation(args)\n    \n    job_id = result.get(\"job_id\")\n    if
+    not job_id:\n        print(\"Error: No job ID returned\")\n        sys.exit(1)\n
+    \   \n    print(f\"Transformation job started with ID: {job_id}\")\n    \n    if
+    args.wait:\n        print(f\"Waiting for job to complete (timeout: {args.timeout}s)...\")\n
+    \       status = wait_for_completion(args.api_url, job_id, args.timeout)\n        \n
+    \       if status.get(\"status\") == \"completed\":\n            print(\"Transformation
+    completed successfully!\")\n            \n            # Get detailed results\n
+    \           results = get_job_result(args.api_url, job_id)\n            \n            #
+    Print summary\n            files_transformed = results.get(\"files_transformed\",
+    0)\n            files_failed = results.get(\"files_failed\", 0)\n            total_files
+    = files_transformed + files_failed\n            \n            print(f\"Transformed
+    {files_transformed}/{total_files} files successfully\")\n            \n            #
+    Print details of transformed files\n            transformations = results.get(\"transformations\",
+    [])\n            for t in transformations:\n                file_path = t.get(\"file_path\",
+    \"unknown\")\n                if t.get(\"success\", False):\n                    print(f\"✅
+    {file_path}\")\n                else:\n                    print(f\"❌ {file_path}:
+    {t.get('error', 'Unknown error')}\")\n            \n            if files_failed
+    > 0:\n                sys.exit(1)\n        else:\n            print(f\"Job did
+    not complete successfully: {status.get('status', 'unknown')}\")\n            sys.exit(1)\n
+    \   else:\n        print(\"Job triggered successfully. Use the following command
+    to check status:\")\n        print(f\"curl {args.api_url}/api/v1/transform/{job_id}\")\n\nif
+    __name__ == \"__main__\":\n    main()\n"
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: transformation-scripts
+  namespace: code-analysis

@@ -1,0 +1,195 @@
+name: Automated Code Transformation
+
+on:
+  # Run on push to main branch
+  push:
+    branches: [ main, master ]
+  
+  # Run on pull requests
+  pull_request:
+    branches: [ main, master ]
+    
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      transformation_type:
+        description: 'Type of transformation to apply'
+        required: true
+        default: 'REFACTOR'
+        type: choice
+        options:
+          - REFACTOR
+          - OPTIMIZE
+          - PRUNE
+          - MERGE
+          - MODERNIZE
+          - FIX_SECURITY
+      verification_level:
+        description: 'Level of verification to perform'
+        required: true
+        default: 'STANDARD'
+        type: choice
+        options:
+          - NONE
+          - BASIC
+          - STANDARD
+          - STRICT
+      safe_mode:
+        description: 'Only apply verified transformations'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TRANSFORMATION_TYPE: ${{ github.event.inputs.transformation_type || 'REFACTOR' }}
+      VERIFICATION_LEVEL: ${{ github.event.inputs.verification_level || 'STANDARD' }}
+      SAFE_MODE: ${{ github.event.inputs.safe_mode || 'true' }}
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx pytest mypy pylint flake8 black isort radon gitpython
+          
+      - name: Identify changed files
+        id: changed-files
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # For pull requests, get changed files between base and head
+            echo "::set-output name=files::$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep -E '\.py$|\.js$|\.ts$|\.java$' | tr '\n' ' ')"
+          else
+            # For pushes, get changed files in the last commit
+            echo "::set-output name=files::$(git diff --name-only HEAD^ HEAD | grep -E '\.py$|\.js$|\.ts$|\.java$' | tr '\n' ' ')"
+          fi
+          
+      - name: Run transformation engine
+        run: |
+          # Create a simple transformation script
+          cat > transform.py << 'EOF'
+          import os
+          import sys
+          import json
+          import subprocess
+          from pathlib import Path
+          
+          # Import transformation engine modules
+          sys.path.append('.')
+          from models import TransformationType, VerificationLevel
+          from codebase_transformer import CodebaseTransformer
+          
+          def main():
+              # Get environment variables
+              transformation_type = os.environ.get('TRANSFORMATION_TYPE', 'REFACTOR')
+              verification_level = os.environ.get('VERIFICATION_LEVEL', 'STANDARD')
+              safe_mode = os.environ.get('SAFE_MODE', 'true').lower() == 'true'
+              
+              # Get list of files to transform
+              files_str = os.environ.get('FILES', '')
+              if not files_str:
+                  print("No files to transform")
+                  return 0
+                  
+              files = files_str.split()
+              print(f"Transforming {len(files)} files with {transformation_type} transformation")
+              
+              # Prepare file info list
+              file_info_list = []
+              for file_path in files:
+                  if not os.path.exists(file_path):
+                      print(f"File {file_path} does not exist, skipping")
+                      continue
+                      
+                  # Determine language from file extension
+                  ext = Path(file_path).suffix.lower()
+                  language = None
+                  if ext == '.py':
+                      language = 'python'
+                  elif ext in ['.js', '.ts']:
+                      language = 'javascript'
+                  elif ext == '.java':
+                      language = 'java'
+                  else:
+                      print(f"Unsupported file type: {ext}, skipping {file_path}")
+                      continue
+                      
+                  file_info_list.append({
+                      'path': file_path,
+                      'language': language
+                  })
+              
+              if not file_info_list:
+                  print("No valid files to transform")
+                  return 0
+                  
+              # Initialize transformer
+              transformer = CodebaseTransformer(
+                  workspace_path=os.getcwd(),
+                  verification_level=verification_level,
+                  safe_mode=safe_mode
+              )
+              
+              try:
+                  # Transform files
+                  results = transformer.transform_files(
+                      files=file_info_list,
+                      transformation_type=transformation_type,
+                      job_id='github-action-job'
+                  )
+                  
+                  # Print results
+                  success_count = sum(1 for r in results if r.get('success', False))
+                  print(f"Transformation completed: {success_count}/{len(results)} files successfully transformed")
+                  
+                  # Print detailed results
+                  for result in results:
+                      file_path = result.get('file_path', 'unknown')
+                      if result.get('success', False):
+                          print(f"✅ {file_path}: {result.get('summary', 'Transformed successfully')}")
+                      else:
+                          print(f"❌ {file_path}: {result.get('error', 'Unknown error')}")
+                          
+                  return 0 if success_count > 0 else 1
+              finally:
+                  transformer.close()
+                  
+          if __name__ == "__main__":
+              sys.exit(main())
+          EOF
+          
+          # Run the transformation script
+          python transform.py
+        env:
+          FILES: ${{ steps.changed-files.outputs.files }}
+          
+      - name: Create pull request with transformations
+        if: github.event_name != 'pull_request' && success()
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Automated code transformation (${{ env.TRANSFORMATION_TYPE }})"
+          title: "Automated code transformation (${{ env.TRANSFORMATION_TYPE }})"
+          body: |
+            This PR contains automated code transformations applied by the Autogenic AI Codebase Enhancer.
+            
+            Transformation type: ${{ env.TRANSFORMATION_TYPE }}
+            Verification level: ${{ env.VERIFICATION_LEVEL }}
+            Safe mode: ${{ env.SAFE_MODE }}
+            
+            Please review the changes and merge if they look good.
+          branch: auto-transform-${{ github.run_id }}
+          base: ${{ github.ref_name }}

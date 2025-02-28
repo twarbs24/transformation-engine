@@ -1,0 +1,171 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transformation-engine
+  namespace: code-analysis
+  labels:
+    app: transformation-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transformation-engine
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: transformation-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+      - name: transformation-engine
+        image: python:3.9-slim
+        imagePullPolicy: Always
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            # Create health check endpoint
+            mkdir -p /app
+            cat > /app/health_server.py << 'EOF'
+            import http.server
+            import socketserver
+            import json
+            import os
+
+            PORT = 8000
+
+            class HealthHandler(http.server.SimpleHTTPRequestHandler):
+                def do_GET(self):
+                    if self.path == '/health':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        
+                        health_data = {
+                            "status": "healthy",
+                            "github_auth": bool(os.environ.get("GITHUB_TOKEN")),
+                            "git_username": os.environ.get("GIT_USERNAME", ""),
+                            "workspace_dir": os.environ.get("WORKSPACE_DIR", "/workspace")
+                        }
+                        
+                        self.wfile.write(json.dumps(health_data).encode())
+                    elif self.path == '/metrics':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'text/plain')
+                        self.end_headers()
+                        self.wfile.write(b'# Transformation Engine Metrics\ntransformation_engine_up 1\n')
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+
+            with socketserver.TCPServer(("", PORT), HealthHandler) as httpd:
+                print(f"Serving health check at port {PORT}")
+                httpd.serve_forever()
+            EOF
+
+            # Start health check server
+            python /app/health_server.py &
+
+            # Keep container running
+            echo "Transformation Engine is running with GitHub authentication"
+            echo "GitHub Username: $GIT_USERNAME"
+            echo "GitHub Token is set: $(if [ -n "$GITHUB_TOKEN" ]; then echo 'Yes'; else echo 'No'; fi)"
+            
+            # Create workspace directory
+            mkdir -p $WORKSPACE_DIR
+            echo "Workspace directory: $WORKSPACE_DIR"
+            
+            # Keep container running
+            tail -f /dev/null
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        env:
+        - name: OLLAMA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: transformation-engine-config
+              key: ollama_url
+        - name: PREFERRED_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: transformation-engine-config
+              key: preferred_model
+        - name: FALLBACK_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: transformation-engine-config
+              key: fallback_model
+        - name: SPECIALIZED_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: transformation-engine-config
+              key: specialized_model
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: transformation-engine-secrets
+              key: github_token
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: transformation-engine-secrets
+              key: git_username
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: transformation-engine-secrets
+              key: mongo_uri
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: transformation-engine-config
+              key: redis_host
+        - name: CODE_ANALYZER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: transformation-engine-config
+              key: code_analyzer_url
+        - name: KNOWLEDGE_REPO_URL
+          valueFrom:
+            configMapKeyRef:
+              name: transformation-engine-config
+              key: knowledge_repo_url
+        - name: WORKSPACE_DIR
+          value: "/workspace"
+        - name: SAFE_MODE
+          value: "true"
+        volumeMounts:
+        - name: workspace-volume
+          mountPath: /workspace
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: workspace-volume
+        persistentVolumeClaim:
+          claimName: transformation-engine-workspace-pvc
