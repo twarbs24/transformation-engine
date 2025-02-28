@@ -118,9 +118,9 @@ class CodebaseTransformer:
         
         # Initialize Ollama settings from environment if not provided
         self.ollama_url = ollama_url or os.getenv("OLLAMA_URL", "http://localhost:11434")
-        self.preferred_model = preferred_model or os.getenv("PREFERRED_MODEL", "deepseek-coder-v2:16b")
-        self.fallback_model = fallback_model or os.getenv("FALLBACK_MODEL", "qwen2.5-coder:7b")
-        self.specialized_model = specialized_model or os.getenv("SPECIALIZED_MODEL", "codellama:34b")
+        self.preferred_model = preferred_model or os.getenv("PREFERRED_MODEL", "deepseek-coder:latest")
+        self.fallback_model = fallback_model or os.getenv("FALLBACK_MODEL", "qwen:7b")
+        self.specialized_model = specialized_model or os.getenv("SPECIALIZED_MODEL", "codellama:latest")
         
         # Initialize HTTP client with longer timeout for AI model calls
         self.http_client = httpx.AsyncClient(timeout=120.0)

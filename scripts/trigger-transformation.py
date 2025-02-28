@@ -49,12 +49,15 @@ def parse_args():
                         help='Timeout in seconds when waiting (default: 600)')
     
     parser.add_argument('--preferred-model',
+                        default=os.environ.get('PREFERRED_MODEL', 'deepseek-coder:latest'),
                         help='Preferred model to use for transformations (overrides environment variable)')
     
     parser.add_argument('--fallback-model',
+                        default=os.environ.get('FALLBACK_MODEL', 'qwen:7b'),
                         help='Fallback model to use for transformations (overrides environment variable)')
     
     parser.add_argument('--specialized-model',
+                        default=os.environ.get('SPECIALIZED_MODEL', 'codellama:latest'),
                         help='Specialized model to use for complex transformations (overrides environment variable)')
     
     return parser.parse_args()
@@ -169,9 +172,9 @@ def main():
             for t in transformations:
                 file_path = t.get("file_path", "unknown")
                 if t.get("success", False):
-                    print(f"✅ {file_path}")
+                    print(f" {file_path}")
                 else:
-                    print(f"❌ {file_path}: {t.get('error', 'Unknown error')}")
+                    print(f" {file_path}: {t.get('error', 'Unknown error')}")
             
             if files_failed > 0:
                 sys.exit(1)

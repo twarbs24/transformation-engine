@@ -25,6 +25,9 @@ spec:
                 --transformation-type ${TRANSFORMATION_TYPE} \
                 --verification-level ${VERIFICATION_LEVEL} \
                 --api-url ${API_URL} \
+                --preferred-model ${PREFERRED_MODEL} \
+                --fallback-model ${FALLBACK_MODEL} \
+                --specialized-model ${SPECIALIZED_MODEL} \
                 --wait \
                 --timeout ${TIMEOUT}
             env:

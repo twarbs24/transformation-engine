@@ -42,17 +42,17 @@ on:
       preferred_model:
         description: 'Preferred model to use for transformations'
         required: false
-        default: ''
+        default: 'deepseek-coder:latest'
         type: string
       fallback_model:
         description: 'Fallback model to use for transformations'
         required: false
-        default: ''
+        default: 'qwen:7b'
         type: string
       specialized_model:
         description: 'Specialized model to use for complex transformations'
         required: false
-        default: ''
+        default: 'codellama:latest'
         type: string
 
 jobs:
@@ -64,9 +64,9 @@ jobs:
       TRANSFORMATION_TYPE: ${{ github.event.inputs.transformation_type || 'REFACTOR' }}
       VERIFICATION_LEVEL: ${{ github.event.inputs.verification_level || 'STANDARD' }}
       SAFE_MODE: ${{ github.event.inputs.safe_mode || 'true' }}
-      PREFERRED_MODEL: ${{ github.event.inputs.preferred_model || '' }}
-      FALLBACK_MODEL: ${{ github.event.inputs.fallback_model || '' }}
-      SPECIALIZED_MODEL: ${{ github.event.inputs.specialized_model || '' }}
+      PREFERRED_MODEL: ${{ github.event.inputs.preferred_model || 'deepseek-coder:latest' }}
+      FALLBACK_MODEL: ${{ github.event.inputs.fallback_model || 'qwen:7b' }}
+      SPECIALIZED_MODEL: ${{ github.event.inputs.specialized_model || 'codellama:latest' }}
       
     steps:
       - name: Checkout repository
@@ -115,9 +115,9 @@ jobs:
               transformation_type = os.environ.get('TRANSFORMATION_TYPE', 'REFACTOR')
               verification_level = os.environ.get('VERIFICATION_LEVEL', 'STANDARD')
               safe_mode = os.environ.get('SAFE_MODE', 'true').lower() == 'true'
-              preferred_model = os.environ.get('PREFERRED_MODEL', '')
-              fallback_model = os.environ.get('FALLBACK_MODEL', '')
-              specialized_model = os.environ.get('SPECIALIZED_MODEL', '')
+              preferred_model = os.environ.get('PREFERRED_MODEL', 'deepseek-coder:latest')
+              fallback_model = os.environ.get('FALLBACK_MODEL', 'qwen:7b')
+              specialized_model = os.environ.get('SPECIALIZED_MODEL', 'codellama:latest')
               
               # Get list of files to transform
               files_str = os.environ.get('FILES', '')
