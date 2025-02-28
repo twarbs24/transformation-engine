@@ -221,7 +221,7 @@ jobs:
         if: github.event_name != 'pull_request' && success()
         uses: peter-evans/create-pull-request@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
           commit-message: "AI-powered code transformation: ${{ env.TRANSFORMATION_TYPE }}"
           title: "AI-powered code transformation: ${{ env.TRANSFORMATION_TYPE }}"
           body: |
